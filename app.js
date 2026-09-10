@@ -276,6 +276,8 @@ function initQuickFitAdvisor() {
    5. INTERACTIVE BESPOKE GARMENT CUSTOMIZER (STUDIO)
    ========================================================================== */
 function initBespokeCustomizer() {
+  if (!document.getElementById('customizer')) return;
+
   const state = {
     step: 1,
     silhouetteId: 'tuxedo',
@@ -346,6 +348,12 @@ function initBespokeCustomizer() {
     panels.forEach((p, idx) => {
       p.classList.toggle('active', (idx + 1) === state.step);
     });
+
+    // On mobile devices, smoothly center the active step tab in the horizontal scroll track
+    const activeTab = document.querySelector(`.step-tab-btn[data-step="${stepNum}"]`);
+    if (activeTab && typeof activeTab.scrollIntoView === 'function') {
+      activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
   }
 
   tabBtns.forEach(btn => {
@@ -474,15 +482,74 @@ function initBespokeCustomizer() {
     if (visualizerTagFabric) {
       visualizerTagFabric.textContent = state.fabricName;
     }
+
+    // Update Live Monogram Stamping on Canvas
+    const visualizerMonogram = document.getElementById('visualizerMonogramBadge');
+    if (visualizerMonogram) {
+      if (state.monogramInitials) {
+        visualizerMonogram.textContent = state.monogramInitials;
+        visualizerMonogram.style.display = 'inline-flex';
+      } else {
+        visualizerMonogram.style.display = 'none';
+      }
+    }
+  }
+
+  // Deep Linking from other pages (e.g. fabrics.html or gallery.html ?silhouette=sherwani&fabric=royal-velvet)
+  function applyUrlParameters() {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const silParam = urlParams.get('silhouette') || urlParams.get('sil');
+      const fabParam = urlParams.get('fabric') || urlParams.get('fab');
+
+      if (silParam) {
+        const targetSil = document.querySelector(`.silhouette-card[data-id="${silParam}"]`);
+        if (targetSil) {
+          targetSil.click();
+        }
+      }
+
+      if (fabParam) {
+        const targetFab = document.querySelector(`.fabric-card[data-id="${fabParam}"]`);
+        if (targetFab) {
+          targetFab.click();
+        }
+      }
+
+      if (silParam || fabParam) {
+        const customizerBox = document.getElementById('customizer');
+        setTimeout(() => {
+          customizerBox?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 200);
+      }
+    } catch (e) {
+      console.warn('URL parameter parsing skipped:', e);
+    }
   }
 
   renderPreview();
+  applyUrlParameters();
 
   const bookSpecHandler = (e) => {
     e.preventDefault();
     const bookingSection = document.getElementById('booking');
     const garmentSelect = document.getElementById('garmentType');
     const notesArea = document.getElementById('specialNotes');
+
+    const specPayload = {
+      silhouette: state.silhouetteName,
+      silhouetteId: state.silhouetteId,
+      fabric: state.fabricName,
+      fabricId: state.fabricId,
+      lapel: state.lapelName,
+      accent: state.accentName,
+      monogram: state.monogramInitials,
+      price: (state.basePrice + state.fabricPrice + state.lapelPrice + state.accentPrice)
+    };
+
+    try {
+      sessionStorage.setItem('bigboss_customizer_spec', JSON.stringify(specPayload));
+    } catch (err) {}
 
     if (garmentSelect) {
       const opts = Array.from(garmentSelect.options);
@@ -493,13 +560,15 @@ function initBespokeCustomizer() {
     }
 
     if (notesArea) {
-      const summaryText = `[Customizer Spec] Silhouette: ${state.silhouetteName} | Fabric: ${state.fabricName} | Cut: ${state.lapelName} | Accent: ${state.accentName}${state.monogramInitials ? ` (Monogram: ${state.monogramInitials})` : ''} | Est. Investment: ₹${(state.basePrice + state.fabricPrice + state.lapelPrice + state.accentPrice).toLocaleString('en-IN')}`;
+      const summaryText = `[Customizer Spec] Silhouette: ${state.silhouetteName} | Fabric: ${state.fabricName} | Cut: ${state.lapelName} | Accent: ${state.accentName}${state.monogramInitials ? ` (Monogram: ${state.monogramInitials})` : ''} | Est. Investment: ₹${specPayload.price.toLocaleString('en-IN')}`;
       notesArea.value = summaryText;
     }
 
     if (bookingSection) {
       bookingSection.scrollIntoView({ behavior: 'smooth' });
       document.getElementById('clientName')?.focus();
+    } else {
+      window.location.href = 'booking.html';
     }
   };
 
@@ -511,8 +580,10 @@ function initBespokeCustomizer() {
    6. SHOWROOM GALLERY WITH PREV / NEXT LIGHTBOX NAVIGATION
    ========================================================================== */
 function initGalleryAndLightbox() {
-  const filterBtns = document.querySelectorAll('.filter-pill');
   const galleryItems = Array.from(document.querySelectorAll('.gallery-item-card'));
+  if (galleryItems.length === 0) return;
+
+  const filterBtns = document.querySelectorAll('.filter-pill');
   const lightboxModal = document.getElementById('lightboxModal');
   const lightboxImg = document.getElementById('lightboxImage');
   const lightboxCaption = document.getElementById('lightboxCaption');
@@ -561,7 +632,25 @@ function initGalleryAndLightbox() {
         lightboxImg.style.opacity = '1';
       }, 150);
 
-      lightboxCaption.innerHTML = `<strong style="font-size:1.1rem; color:#FFFFFF;">${title}</strong><br><span style="color:#D1D5DB; font-size:0.86rem; margin-top:0.3rem; display:inline-block;">${caption}</span>`;
+      const cat = item.dataset.category || '';
+      let customizerParam = '';
+      if (cat.includes('suits')) customizerParam = '?silhouette=tuxedo&fabric=italian-wool';
+      else if (cat.includes('ethnic')) customizerParam = '?silhouette=sherwani&fabric=banarasi-silk';
+      else if (cat.includes('waistcoats')) customizerParam = '?silhouette=nehru-jacket&fabric=banarasi-silk';
+      else if (cat.includes('fabrics')) customizerParam = '?fabric=italian-wool';
+
+      const actionButtons = `
+        <div class="lightbox-action-row" style="margin-top:0.85rem; display:flex; gap:0.75rem; flex-wrap:wrap;">
+          <a href="https://wa.me/917926449098?text=${encodeURIComponent(`Hello Big Boss & Co, I am inquiring about "${title}" from your showroom lookbook.`)}" target="_blank" rel="noopener" class="btn-luxury-primary" style="padding:0.45rem 1rem; font-size:0.8rem; min-height:auto;">
+            Inquire on WhatsApp ↗
+          </a>
+          <a href="customizer.html${customizerParam}" class="btn-luxury-outline" style="padding:0.45rem 1rem; font-size:0.8rem; min-height:auto; border-color:rgba(184,147,68,0.6); color:#FFFFFF;">
+            Configure in Studio →
+          </a>
+        </div>
+      `;
+
+      lightboxCaption.innerHTML = `<strong style="font-size:1.1rem; color:#FFFFFF;">${title}</strong><br><span style="color:#D1D5DB; font-size:0.86rem; margin-top:0.3rem; display:inline-block;">${caption}</span>${actionButtons}`;
       lightboxCounter.textContent = `${currentPhotoIndex + 1} / ${galleryItems.length}`;
     }
   }
@@ -596,6 +685,29 @@ function initGalleryAndLightbox() {
     if (e.target === lightboxModal) closeLightbox();
   });
 
+  // Touch swipe support for iOS Safari & Android mobile browsers
+  let touchStartX = 0;
+  let touchEndX = 0;
+  lightboxModal?.addEventListener('touchstart', (e) => {
+    if (e.touches && e.touches[0]) {
+      touchStartX = e.touches[0].screenX;
+    }
+  }, { passive: true });
+
+  lightboxModal?.addEventListener('touchend', (e) => {
+    if (e.changedTouches && e.changedTouches[0]) {
+      touchEndX = e.changedTouches[0].screenX;
+      const swipeDistance = touchEndX - touchStartX;
+      if (Math.abs(swipeDistance) > 45) {
+        if (swipeDistance < 0) {
+          showPhotoAtIndex(currentPhotoIndex + 1); // Swipe left -> Next
+        } else {
+          showPhotoAtIndex(currentPhotoIndex - 1); // Swipe right -> Previous
+        }
+      }
+    }
+  }, { passive: true });
+
   document.addEventListener('keydown', (e) => {
     if (!lightboxModal?.classList.contains('active')) return;
     if (e.key === 'Escape') closeLightbox();
@@ -614,8 +726,70 @@ function initAppointmentBooking() {
   const whatsAppTicketBtn = document.getElementById('sendWhatsAppTicketBtn');
   const calendarBtn = document.getElementById('addGoogleCalendarBtn');
   const printTicketBtn = document.getElementById('printTicketBtn');
+  const copyRefBtn = document.getElementById('copyRefBtn');
 
   if (!form) return;
+
+  // Check if a bespoke specification was transferred from the customizer page
+  try {
+    const savedSpec = sessionStorage.getItem('bigboss_customizer_spec');
+    if (savedSpec) {
+      const spec = JSON.parse(savedSpec);
+      const garmentSelect = document.getElementById('garmentType');
+      const notesArea = document.getElementById('specialNotes');
+
+      if (garmentSelect && spec.silhouette) {
+        const silText = (spec.silhouette || '').toLowerCase();
+        const opts = Array.from(garmentSelect.options);
+        let match = null;
+        if (silText.includes('tuxedo')) {
+          match = opts.find(o => o.value.toLowerCase().includes('tuxedo'));
+        } else if (silText.includes('sherwani')) {
+          match = opts.find(o => o.value.toLowerCase().includes('sherwani'));
+        } else if (silText.includes('nehru') || silText.includes('bandi')) {
+          match = opts.find(o => o.value.toLowerCase().includes('nehru') || o.value.toLowerCase().includes('bandi'));
+        } else if (silText.includes('indo-western') || silText.includes('achkan')) {
+          match = opts.find(o => o.value.toLowerCase().includes('indo-western') || o.value.toLowerCase().includes('achkan'));
+        } else if (silText.includes('business') || silText.includes('executive') || silText.includes('suit')) {
+          match = opts.find(o => o.value.toLowerCase().includes('executive') || o.value.toLowerCase().includes('suit'));
+        } else if (silText.includes('shirt') || silText.includes('trouser')) {
+          match = opts.find(o => o.value.toLowerCase().includes('shirt'));
+        }
+        if (match) garmentSelect.value = match.value;
+      }
+
+      if (notesArea && !notesArea.value) {
+        notesArea.value = `[Transferred Customizer Spec] Silhouette: ${spec.silhouette} | Fabric: ${spec.fabric} | Lapel: ${spec.lapel} | Accent: ${spec.accent}${spec.monogram ? ` (Monogram: ${spec.monogram})` : ''} | Est. Investment: ₹${Number(spec.price).toLocaleString('en-IN')}`;
+      }
+
+      // Display luxury visual banner on booking page
+      const specBanner = document.getElementById('attachedSpecBanner');
+      if (specBanner) {
+        specBanner.innerHTML = `
+          <div class="attached-spec-card">
+            <div class="attached-spec-header">
+              <div class="attached-spec-title">
+                <span class="pulse-dot"></span>
+                <h5>Bespoke Blueprint Attached from Studio</h5>
+              </div>
+              <a href="customizer.html" class="attached-spec-edit">Modify in Studio ↗</a>
+            </div>
+            <div class="attached-spec-body">
+              <div class="spec-chip"><strong>Silhouette:</strong> ${spec.silhouette}</div>
+              <div class="spec-chip"><strong>Fabric:</strong> ${spec.fabric}</div>
+              <div class="spec-chip"><strong>Lapel:</strong> ${spec.lapel}</div>
+              <div class="spec-chip"><strong>Accent:</strong> ${spec.accent}${spec.monogram ? ` ("${spec.monogram}")` : ''}</div>
+              <div class="spec-chip price"><strong>Est. Investment:</strong> ₹${Number(spec.price).toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+        `;
+        specBanner.style.display = 'block';
+      }
+
+      sessionStorage.removeItem('bigboss_customizer_spec');
+      document.getElementById('clientName')?.focus();
+    }
+  } catch (err) {}
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -644,12 +818,24 @@ function initAppointmentBooking() {
       day: 'numeric'
     });
 
-    document.getElementById('ticketRefCode').textContent = refCode;
-    document.getElementById('ticketClientName').textContent = name;
-    document.getElementById('ticketClientPhone').textContent = phone;
-    document.getElementById('ticketGarmentType').textContent = garment;
-    document.getElementById('ticketVenue').textContent = venue;
-    document.getElementById('ticketDateTime').textContent = `${dateFormatted} at ${time}`;
+    const elRef = document.getElementById('ticketRefCode');
+    if (elRef) elRef.textContent = refCode;
+    const elName = document.getElementById('ticketClientName');
+    if (elName) elName.textContent = name;
+    const elPhone = document.getElementById('ticketClientPhone');
+    if (elPhone) elPhone.textContent = phone;
+    const elGarment = document.getElementById('ticketGarmentType');
+    if (elGarment) elGarment.textContent = garment;
+
+    const elVenue = document.getElementById('ticketVenue') || document.getElementById('ticketConsultationType');
+    if (elVenue) elVenue.textContent = venue;
+
+    const elDate = document.getElementById('ticketDate');
+    if (elDate) elDate.textContent = dateFormatted;
+    const elTime = document.getElementById('ticketTime');
+    if (elTime) elTime.textContent = time;
+    const elDateTime = document.getElementById('ticketDateTime');
+    if (elDateTime) elDateTime.textContent = `${dateFormatted} at ${time}`;
 
     // Trigger Golden Stardust Celebration Burst
     const submitBtn = form.querySelector('button[type="submit"]');
@@ -665,6 +851,19 @@ function initAppointmentBooking() {
       const endTimeFormatted = `${cleanDate}T123000Z`;
       const calUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Bespoke Fitting Trial - Big Boss & Co')}&dates=${startTimeFormatted}/${endTimeFormatted}&details=${encodeURIComponent(`Bespoke fitting trial for ${name} (${garment}). Ref: ${refCode}`)}&location=${encodeURIComponent('10, Sun House, Opp. Navrangpura Tel. Exch., C.G. Road, Ahmedabad')}`;
       calendarBtn.href = calUrl;
+    }
+
+    // Copy Reference Code Handler
+    if (copyRefBtn) {
+      copyRefBtn.onclick = () => {
+        navigator.clipboard.writeText(refCode).then(() => {
+          const original = copyRefBtn.innerHTML;
+          copyRefBtn.innerHTML = '✓ Copied Pass Ref!';
+          setTimeout(() => { copyRefBtn.innerHTML = original; }, 2200);
+        }).catch(() => {
+          alert(`Reference Code: ${refCode}`);
+        });
+      };
     }
 
     if (whatsAppTicketBtn) {
@@ -756,6 +955,11 @@ function initDefaultBookingDate() {
    8. 3D CARD TILT EFFECT (TACTILE APPLE/STRIPE LUXURY MICRO-INTERACTION)
    ========================================================================== */
 function init3DCardTilt() {
+  // Only enable 3D card tilt on desktop devices with fine pointer (mouse/trackpad) to prevent touch jitter on mobile
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    return;
+  }
+
   const tiltCards = document.querySelectorAll('.tilt-card, .hero-featured-box');
 
   tiltCards.forEach(card => {
@@ -785,39 +989,67 @@ function initAtelierActivityToast() {
   const toast = document.getElementById('activityToast');
   const toastMsg = document.getElementById('toastMessage');
   const closeBtn = document.getElementById('closeToastBtn');
+  if (!toast || !toastMsg) return;
+
+  try {
+    if (sessionStorage.getItem('bigboss_toast_dismissed') === '1') {
+      return;
+    }
+  } catch (e) {}
+
   let dismissed = false;
+  let isHovered = false;
 
   const activities = [
     'Hand-basted: 3-Piece Italian Wool Tuxedo for trial today',
     'Appointment reserved: Master fitting trial for Bodakdev groom',
     'New Textile Roll: Super 150s Pure Wool suiting bolts added',
     'Finished garment: Royal Embroidered Sherwani ready for pickup',
-    'Bespoke consultation scheduled at C.G. Road Showroom'
+    'Bespoke consultation scheduled at C.G. Road Showroom',
+    'Anatomical pattern cut: 2-Piece Executive Suit for Navrangpura patron'
   ];
 
   let actIndex = 0;
+  let hideTimeout = null;
+
+  toast.addEventListener('mouseenter', () => { isHovered = true; });
+  toast.addEventListener('mouseleave', () => {
+    isHovered = false;
+    if (toast.classList.contains('visible') && !dismissed) {
+      clearTimeout(hideTimeout);
+      hideTimeout = setTimeout(() => {
+        if (!isHovered && !dismissed) toast.classList.remove('visible');
+      }, 2500);
+    }
+  });
 
   function showNextToast() {
-    if (dismissed || !toast || !toastMsg) return;
+    if (dismissed || isHovered) return;
     toastMsg.textContent = activities[actIndex];
     toast.classList.add('visible');
 
-    setTimeout(() => {
-      if (!dismissed) toast.classList.remove('visible');
+    clearTimeout(hideTimeout);
+    hideTimeout = setTimeout(() => {
+      if (!dismissed && !isHovered) toast.classList.remove('visible');
     }, 6000);
 
     actIndex = (actIndex + 1) % activities.length;
   }
 
-  // First toast after 3.5 seconds
+  // First toast after 3 seconds
   setTimeout(() => {
     showNextToast();
     setInterval(showNextToast, 16000);
-  }, 3500);
+  }, 3000);
 
-  closeBtn?.addEventListener('click', () => {
+  closeBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
     dismissed = true;
-    toast?.classList.remove('visible');
+    clearTimeout(hideTimeout);
+    toast.classList.remove('visible');
+    try {
+      sessionStorage.setItem('bigboss_toast_dismissed', '1');
+    } catch (err) {}
   });
 }
 
@@ -829,15 +1061,47 @@ function initMobileNavigation() {
   const navMenu = document.getElementById('navMenu');
 
   if (toggleBtn && navMenu) {
-    toggleBtn.addEventListener('click', () => {
-      navMenu.classList.toggle('open');
+    toggleBtn.setAttribute('aria-expanded', 'false');
+
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = navMenu.classList.toggle('open');
+      toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     });
 
+    // Close when tapping any navigation link
     navMenu.querySelectorAll('.nav-item-link').forEach(link => {
       link.addEventListener('click', () => {
         navMenu.classList.remove('open');
+        toggleBtn.setAttribute('aria-expanded', 'false');
       });
     });
+
+    // Close when tapping anywhere outside the mobile drawer
+    document.addEventListener('click', (e) => {
+      if (!navMenu.contains(e.target) && !toggleBtn.contains(e.target)) {
+        if (navMenu.classList.contains('open')) {
+          navMenu.classList.remove('open');
+          toggleBtn.setAttribute('aria-expanded', 'false');
+        }
+      }
+    });
+
+    // Close on Escape key press
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && navMenu.classList.contains('open')) {
+        navMenu.classList.remove('open');
+        toggleBtn.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    // Close menu when resizing above mobile breakpoint
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 768 && navMenu.classList.contains('open')) {
+        navMenu.classList.remove('open');
+        toggleBtn.setAttribute('aria-expanded', 'false');
+      }
+    }, { passive: true });
   }
 
   const header = document.getElementById('siteHeader');
@@ -847,5 +1111,5 @@ function initMobileNavigation() {
     } else {
       header?.classList.remove('scrolled');
     }
-  });
+  }, { passive: true });
 }

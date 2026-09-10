@@ -11,15 +11,30 @@ const MIME_TYPES = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon'
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+  '.txt': 'text/plain',
+  '.xml': 'application/xml'
 };
 
 const server = http.createServer((req, res) => {
   let reqPath = decodeURIComponent(req.url.split('?')[0]);
   if (reqPath === '/' || reqPath === '') reqPath = '/index.html';
 
-  const filePath = path.join(__dirname, reqPath);
+  // Secure path normalization to prevent directory traversal
+  const safeRoot = path.resolve(__dirname);
+  const filePath = path.resolve(safeRoot, '.' + reqPath);
+
+  if (!filePath.startsWith(safeRoot)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('403 Forbidden');
+    return;
+  }
+
   const ext = path.extname(filePath).toLowerCase();
 
   fs.readFile(filePath, (err, data) => {
@@ -33,8 +48,17 @@ const server = http.createServer((req, res) => {
       }
       return;
     }
+
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': contentType });
+    const isAsset = /\.(jpg|jpeg|png|webp|svg|ico|woff2|woff|ttf)$/i.test(ext);
+
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'SAMEORIGIN',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Cache-Control': isAsset ? 'public, max-age=86400, immutable' : 'no-cache'
+    });
     res.end(data);
   });
 });
